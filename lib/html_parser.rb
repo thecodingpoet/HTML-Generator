@@ -5,25 +5,58 @@ class HtmlParser
   def initialize(content, highlights)
     @highlights = highlights.sort_by { |h| -h[:start] }
     @words = content.split(/ /)
-    @color = ColorGenerator.new
   end
 
   def build
-    apply_highlights_to_words
+    apply_highlights_to_paragraphs
     generate_html
   end
 
   private
 
-  def apply_highlights_to_words
+  def apply_highlights_to_paragraphs
     @highlights.each_with_index do |highlight, index|
       start_index = highlight[:start] - 1
       end_index = (highlight[:end] < @words.count ? highlight[:end] : @words.count) - 1
       comment = highlight[:comment]
-      text = (index < 1 ? @words[start_index..end_index] : @words[start_index..end_index - 1]).join(" ")
+      text = @words[start_index..end_index].join(" ")
+      color = ColorGenerator.new.generate_unique
 
-      @words[start_index..end_index] = tooltip(text, highlight[:comment])
+      if highlights_accross_multiple_paragraph?(text)
+        intervals = generate_intervals(start_index, end_index)
+        
+        intervals.each_with_index do |interval, index|
+          break unless index < intervals.count - 1
+          
+          start_index = interval  - 1
+          end_index = intervals[index + 1] - 1
+          
+          
+          text = @words[start_index..end_index].join(" ")
+
+          @words[start_index..end_index] = tooltip(text, comment, color)
+          @words.insert(start_index + 1, *[""] * ((start_index..end_index).count - 1))
+        end
+      else 
+        @words[start_index..end_index] = tooltip(text, comment, color)
+        @words.insert(start_index + 1, *[""] * ((start_index..end_index).count - 1))
+      end
     end
+  end
+
+  def generate_intervals(start_index, end_index)
+    intervals = paragraphs_indexes.reject {|p| p < start_index || p > end_index}
+    intervals.unshift(start_index)
+    intervals.push(end_index)
+    intervals.uniq
+  end
+
+  def paragraphs_indexes
+    @words.each_with_index.map { |word, index| index + 1 if word.include?("\n\n") }.compact
+  end
+
+  def highlights_accross_multiple_paragraph?(text)
+    text.split("\n\n").length > 1
   end
 
   def generate_html 
@@ -39,8 +72,8 @@ class HtmlParser
     @words.join(" ").split("\n\n").map { |content| p_tag(content) }
   end
 
-  def tooltip(text, comment)
-    "<span class='tooltip' data-text='#{comment}' style='background-color: #{@color.generate_unique};'>#{text}</span>"
+  def tooltip(text, comment, color)
+    "<span class='tooltip' data-text='#{comment}' style='background-color: #{color};'>#{text}</span>"
   end
 
   def p_tag(content)
@@ -55,7 +88,7 @@ Sed turpis enim, porttitor nec maximus sed, lua.ctus pretium elit. Sed sodales i
 
 Nunc quis elit quam. Sed aliquet, nibh ut sagittis egestas, lorem tortor laoreet diam, non maximus lectus dolor dignissim eros. Sed vehicula mi id aliquet aliquam. Vestibulum sed lacus et neque dictum convallis in vitae mauris. Etiam varius augue vel mattis tempor. Curabitur mattis facilisis metus, tempus consectetur quam aliquam sed. Mauris velit orci, efficitur sit amet nisl in, finibus dictum elit. In lectus augue, elementum eu sapien sed, auctor tincidunt urna.
 
-Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Integer lacinia accumsan velit. Duis vel facilisis libero. Cras consequat sit amet mauris ut ultrices. Ut pulvinar sit amet odio sit amet pretium. Nullam tortor ligula, consequat non nisl vitae, rutrum placerat est. Sed finibus interdum justo vel placerat. Cras varius tortor sed justo tempus scelerisque. Praesent facilisis ex vitae iaculis iaculis. Sed consectetur a lectus non condimentum. Etiam id lacus a nulla cursus laoreet. Vivamus ipsum purus, sodales vel metus varius, viverra mollis justo. Nulla facilisi. Vivamus volutpat nunc elit, quis sollicitudin velit ornare sit amet.
+Orci varius natoque penatibus et magnis dis paryturient montes, nascetur ridiculus mus. Integer lacinia accumsan velit. Duis vel facilisis libero. Cras consequat sit amet mauris ut ultrices. Ut pulvinar sit amet odio sit amet pretium. Nullam tortor ligula, consequat non nisl vitae, rutrum placerat est. Sed finibus interdum justo vel placerat. Cras varius tortor sed justo tempus scelerisque. Praesent facilisis ex vitae iaculis iaculis. Sed consectetur a lectus non condimentum. Etiam id lacus a nulla cursus laoreet. Vivamus ipsum purus, sodales vel metus varius, viverra mollis justo. Nulla facilisi. Vivamus volutpat nunc elit, quis sollicitudin velit ornare sit amet.
 
 Nullam fringilla nisi nunc, vitae accumsan tortor luctus quis. Sed facilisis, est ut eleifend sagittis, felis dolor pellentesque lectus, in congue purus orci non nunc. Nunc finibus eu metus et volutpat. Integer hendrerit tortor et tellus euismod vulputate. Aliquam erat volutpat. Aenean gravida justo in risus feugiat, ut suscipit tortor ullamcorper. Nam a sapien dictum, vestibulum eros vitae, sodales turpis. Interdum et malesuada fames ac ante ipsum primis in faucibus. Sed ultricies at elit et rutrum. Sed placerat erat quis condimentum convallis. Duis ornare magna nec ante faucibus malesuada. Duis a erat sed sapien semper eleifend. Mauris consequat nibh sollicitudin mi euismod, non ultricies lectus bibendum. Cras a erat libero. Aliquam nisl ipsum, scelerisque at risus a, hendrerit vestibulum sapien. Proin luctus diam eu mi lobortis molestie id vel ante."
 
@@ -71,13 +104,7 @@ highlights = [{
   start: 85,
   end: 98,
   comment: 'Baz'
-}, {
-  start: 170,
-  end: 220,
-  comment: 'Know'
 }]
-
-
 
 
 parser = HtmlParser.new content, highlights
