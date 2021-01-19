@@ -23,25 +23,29 @@ class HtmlParser
       color = ColorGenerator.new.generate_unique
 
       if highlights_accross_multiple_paragraph?(start_index, end_index)
-        intervals = generate_intervals(start_index, end_index)
-
-        intervals.each_with_index do |interval, index|
-          break unless index < intervals.count - 1
-
-          start_index = index == 0 ? interval : interval + 1
-          end_index = intervals[index + 1] 
-          
-          insert_tooltip(start_index, end_index, color, comment)
-        end
+        insert_tooltips_at_intervals(start_index, end_index, color, comment)
       else 
         insert_tooltip(start_index, end_index, color, comment)
       end
     end
   end
 
+  def insert_tooltips_at_intervals(start_index, end_index, color, comment)
+    intervals = generate_intervals(start_index, end_index)
+
+    intervals.each_with_index do |interval, index|
+      break unless index < intervals.count - 1
+
+      start_interval = index == 0 ? interval : interval + 1
+      end_interval = intervals[index + 1] 
+
+      insert_tooltip(start_interval, end_interval, color, comment)
+    end
+  end
+
   def insert_tooltip(start_index, end_index, color, comment)
     text = @words[start_index..end_index].join(" ")
-  
+
     @words[start_index..end_index] = tooltip(text, comment, color)
     @words.insert(start_index + 1, *[""] * ((start_index..end_index).count - 1))
   end 
@@ -55,8 +59,7 @@ class HtmlParser
   end
 
   def paragraphs_indexes
-    acc = 0
-    @paragraphs_indexes ||= @content.split("\n\n").map { |paragraph| acc += paragraph.split(" ").count }.map{ |n| n - 1 }
+    @paragraphs_indexes ||= @content.split("\n\n").reduce([]) {|memo, p| memo << p.split(" ").count + memo.last.to_i}.map{|i| i-1}
   end
 
   def highlights_accross_multiple_paragraph?(start_index, end_index)
@@ -91,7 +94,7 @@ class HtmlParser
 
   def tooltip(text, comment, color)
     <<~TOOLTIP
-      <span class="tooltip" data-text="#{comment}"" style="background-color: #{color};">
+      <span class="tooltip" data-text="#{comment}" style="background-color: #{color};">
         #{text}
       </span>
     TOOLTIP
