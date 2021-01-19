@@ -4,7 +4,8 @@ require_relative './color_generator'
 class HtmlParser
   def initialize(content, highlights)
     @highlights = highlights.sort_by { |h| -h[:start] }
-    @words = content.split(/ /)
+    @content = content
+    @words = content.split(" ")
   end
 
   def build
@@ -19,44 +20,51 @@ class HtmlParser
       start_index = highlight[:start] - 1
       end_index = (highlight[:end] < @words.count ? highlight[:end] : @words.count) - 1
       comment = highlight[:comment]
-      text = @words[start_index..end_index].join(" ")
       color = ColorGenerator.new.generate_unique
 
-      if highlights_accross_multiple_paragraph?(text)
+      if highlights_accross_multiple_paragraph?(start_index, end_index)
         intervals = generate_intervals(start_index, end_index)
-        
+
         intervals.each_with_index do |interval, index|
           break unless index < intervals.count - 1
-          
-          start_index = interval  - 1
-          end_index = intervals[index + 1] - 1
-          
-          
-          text = @words[start_index..end_index].join(" ")
 
-          @words[start_index..end_index] = tooltip(text, comment, color)
-          @words.insert(start_index + 1, *[""] * ((start_index..end_index).count - 1))
+          start_index = index == 0 ? interval : interval + 1
+          end_index = intervals[index + 1] 
+          
+          insert_tooltip(start_index, end_index, color, comment)
         end
       else 
-        @words[start_index..end_index] = tooltip(text, comment, color)
-        @words.insert(start_index + 1, *[""] * ((start_index..end_index).count - 1))
+        insert_tooltip(start_index, end_index, color, comment)
       end
     end
   end
 
+  def insert_tooltip(start_index, end_index, color, comment)
+    text = @words[start_index..end_index].join(" ")
+  
+    @words[start_index..end_index] = tooltip(text, comment, color)
+    @words.insert(start_index + 1, *[""] * ((start_index..end_index).count - 1))
+  end 
+
   def generate_intervals(start_index, end_index)
-    intervals = paragraphs_indexes.reject {|p| p < start_index || p > end_index}
-    intervals.unshift(start_index)
-    intervals.push(end_index)
-    intervals.uniq
+    [
+      start_index,
+      *paragraphs_indexes.reject { |p| p < start_index || p > end_index},
+      end_index
+    ].uniq
   end
 
   def paragraphs_indexes
-    @words.each_with_index.map { |word, index| index + 1 if word.include?("\n\n") }.compact
+    acc = 0
+    @paragraphs_indexes ||= @content.split("\n\n").map { |paragraph| acc += paragraph.split(" ").count }.map{ |n| n - 1 }
   end
 
-  def highlights_accross_multiple_paragraph?(text)
-    text.split("\n\n").length > 1
+  def highlights_accross_multiple_paragraph?(start_index, end_index)
+    paragraphs_indexes.each do |index|
+      if index.between?(start_index, end_index)
+        return true
+      end
+    end
   end
 
   def generate_html 
@@ -69,18 +77,30 @@ class HtmlParser
   end
 
   def paragraphs
-    @words.join(" ").split("\n\n").map { |content| p_tag(content) }
+    result = []
+    start_index = 0
+
+    paragraphs_indexes.each do |interval|
+      end_index = interval
+      result << p_tag(@words[start_index..end_index].join(" "))
+      start_index = end_index
+    end
+
+    result
   end
 
   def tooltip(text, comment, color)
-    "<span class='tooltip' data-text='#{comment}' style='background-color: #{color};'>#{text}</span>"
+    <<~TOOLTIP
+      <span class="tooltip" data-text="#{comment}"" style="background-color: #{color};">
+        #{text}
+      </span>
+    TOOLTIP
   end
 
   def p_tag(content)
     "<p>#{content}</p>"
   end
 end
-
 
 content = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas consectetur malesuada velit, sit amet porta magna maximus nec. Aliquam aliquet tincidunt enim vel rutrum. Ut augue lorem, rutrum et turpis in, molestie mollis nisi. Ut dapibus erat eget felis pulvinar, ac vestibulum augue bibendum. Quisque sagittis magna nisi. Sed aliquam porttitor fermentum. Nulla consequat justo eu nulla sollicitudin auctor. Sed porta enim non diam mollis, a ullamcorper dolor molestie. Nam eu ex non nisl viverra hendrerit. Donec ante augue, eleifend vel eleifend quis, laoreet volutpat ipsum. Integer viverra aliquam nulla, ac rutrum dui sodales nec.
 
@@ -106,11 +126,5 @@ highlights = [{
   comment: 'Baz'
 }]
 
-
 parser = HtmlParser.new content, highlights
 parser.build
-
-
-
-
-
