@@ -1,7 +1,7 @@
 require 'erb'
 require_relative './color_generator'
 
-class HtmlParser
+class HtmlGenerator
   def initialize(content, highlights)
     @highlights = highlights.sort_by { |h| -h[:start] }
     @content = content
@@ -20,7 +20,7 @@ class HtmlParser
       start_index = highlight[:start] - 1
       end_index = (highlight[:end] < @words.count ? highlight[:end] : @words.count) - 1
       comment = highlight[:comment]
-      color = ColorGenerator.new.generate_unique
+      color = ColorGenerator.unique_color
 
       if highlights_accross_multiple_paragraph?(start_index, end_index)
         insert_tooltips_at_intervals(start_index, end_index, color, comment)
@@ -33,13 +33,8 @@ class HtmlParser
   def insert_tooltips_at_intervals(start_index, end_index, color, comment)
     intervals = generate_intervals(start_index, end_index)
 
-    intervals.each_with_index do |interval, index|
-      break unless index < intervals.count - 1
-
-      start_interval = index == 0 ? interval : interval + 1
-      end_interval = intervals[index + 1] 
-
-      insert_tooltip(start_interval, end_interval, color, comment)
+    intervals.each do |interval|
+      insert_tooltip(interval.first, interval.last, color, comment)
     end
   end
 
@@ -53,18 +48,23 @@ class HtmlParser
   def generate_intervals(start_index, end_index)
     [
       start_index,
-      *paragraphs_indexes.reject { |p| p < start_index || p > end_index},
+      *paragraphs_indexes.reject { |p| p <= start_index || p >= end_index},
       end_index
-    ].uniq
+    ].each_cons(2).map.with_index do |interval, index| 
+      start_interval = index == 0 ? interval.first : interval.first + 1
+      end_interval = interval.last
+
+      [start_interval, end_interval]
+    end 
   end
 
   def paragraphs_indexes
-    @paragraphs_indexes ||= @content.split("\n\n").reduce([]) {|memo, p| memo << p.split(" ").count + memo.last.to_i}.map{|i| i-1}
+    @paragraphs_indexes ||= @content.split("\n\n").reduce([]) {|memo, p| memo << p.split(" ").count + memo.last.to_i}.map(&:pred)
   end
 
   def highlights_accross_multiple_paragraph?(start_index, end_index)
-    paragraphs_indexes.each do |index|
-      if index.between?(start_index, end_index)
+    paragraphs_indexes.each do |index| 
+      if index.between?(start_index, end_index) 
         return true
       end
     end
@@ -83,9 +83,9 @@ class HtmlParser
     result = []
     start_index = 0
 
-    paragraphs_indexes.each do |interval|
-      end_index = interval
-      result << p_tag(@words[start_index..end_index].join(" "))
+    paragraphs_indexes.each do |index|
+      end_index = index
+      result << @words[start_index..end_index].join(" ")
       start_index = end_index
     end
 
@@ -98,10 +98,6 @@ class HtmlParser
         #{text}
       </span>
     TOOLTIP
-  end
-
-  def p_tag(content)
-    "<p>#{content}</p>"
   end
 end
 
@@ -129,5 +125,5 @@ highlights = [{
   comment: 'Baz'
 }]
 
-parser = HtmlParser.new content, highlights
-parser.build
+html_gen = HtmlGenerator.new content, highlights
+html_gen.build
